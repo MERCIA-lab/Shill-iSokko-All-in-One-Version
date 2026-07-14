@@ -1,0 +1,16 @@
+{
+  "expo": {
+    "name": "iMeek Cargo",
+    "slug": "imeek-cargo-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#F3F1EA"
+    },
+    "ios": { "supportsTablet": true },
+    "android": {
+      "adaptiveIcon": { "backgroundColor": "#F3F1EA" }
+    }
+  }
+}

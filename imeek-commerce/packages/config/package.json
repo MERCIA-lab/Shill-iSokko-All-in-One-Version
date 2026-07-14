@@ -1,0 +1,22 @@
+{
+  "name": "@imeek/config",
+  "version": "1.0.0",
+  "private": true,
+  "main": "./env.ts",
+  "exports": {
+    "./eslint-preset": "./eslint-preset.js",
+    "./eslint-preset.js": "./eslint-preset.js",
+    "./tsconfig.base.json": "./tsconfig.base.json",
+    "./env": "./env.ts"
+  },
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.8.0",
+    "@typescript-eslint/parser": "^8.8.0",
+    "eslint": "^8.57.1",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-import": "^2.31.0"
+  }
+}

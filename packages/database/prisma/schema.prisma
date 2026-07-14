@@ -1,0 +1,299 @@
+// iMeek Commerce + Cargo platform schema
+// Models both the storefront/marketplace domain and the fleet/shipment
+// domain shown in the admin dashboard (Company, Truck, Shipment, etc).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Identity / tenancy
+// ---------------------------------------------------------------------------
+
+enum UserRole {
+  OWNER
+  ADMIN
+  DISPATCHER
+  DRIVER
+  SUPPORT
+}
+
+model Company {
+  id        String   @id @default(cuid())
+  name      String
+  shortCode String   @unique
+  createdAt DateTime @default(now())
+
+  users     User[]
+  trucks    Truck[]
+  shipments Shipment[]
+  customers Customer[]
+  products  Product[]
+  orders    Order[]
+
+  @@map("companies")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  avatarUrl    String?
+  role         UserRole @default(DISPATCHER)
+  companyId    String
+  company      Company  @relation(fields: [companyId], references: [id])
+  createdAt    DateTime @default(now())
+
+  driverShipments Shipment[] @relation("DriverShipments")
+  notifications   Notification[]
+
+  @@index([companyId])
+  @@map("users")
+}
+
+// ---------------------------------------------------------------------------
+// Fleet / cargo domain (mirrors the admin dashboard)
+// ---------------------------------------------------------------------------
+
+enum TruckStatus {
+  ON_ROUTE
+  IDLE
+  MAINTENANCE
+  OFFLINE
+}
+
+model Truck {
+  id             String      @id @default(cuid())
+  plateNumber    String      @unique
+  model          String
+  status         TruckStatus @default(IDLE)
+  capacityKg     Int
+  currentLoadPct Int         @default(0)
+  maxLoadKg      Int
+  lastLat        Float?
+  lastLng        Float?
+  companyId      String
+  company        Company     @relation(fields: [companyId], references: [id])
+
+  shipments Shipment[]
+
+  @@index([companyId])
+  @@map("trucks")
+}
+
+model Customer {
+  id         String   @id @default(cuid())
+  name       String
+  avatarUrl  String?
+  documentId String
+  country    String
+  rating     Float    @default(5.0)
+  phone      String?
+  email      String?
+  companyId  String
+  company    Company  @relation(fields: [companyId], references: [id])
+  createdAt  DateTime @default(now())
+
+  shipments Shipment[]
+  orders    Order[]
+
+  @@index([companyId])
+  @@map("customers")
+}
+
+enum ShipmentStatus {
+  PENDING
+  LOADING
+  IN_TRANSIT
+  DELIVERED
+  DELAYED
+  CANCELLED
+}
+
+model Shipment {
+  id                    String         @id @default(cuid())
+  reference             String         @unique
+  status                ShipmentStatus @default(PENDING)
+  originLabel           String
+  destinationLabel      String
+  parcelType            String
+  parcelValueCents      Int
+  distanceToArrivalKm   Float
+  etaMinutes            Int
+  routeOptimizationPct  Int            @default(0)
+  routeEfficiencyPct    Int            @default(0)
+  dateOfArrival         DateTime
+
+  companyId  String
+  company    Company  @relation(fields: [companyId], references: [id])
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id])
+  truckId    String
+  truck      Truck    @relation(fields: [truckId], references: [id])
+  driverId   String
+  driver     User     @relation("DriverShipments", fields: [driverId], references: [id])
+
+  waypoints Waypoint[]
+  order     Order?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId, status])
+  @@map("shipments")
+}
+
+model Waypoint {
+  id         String    @id @default(cuid())
+  shipmentId String
+  shipment   Shipment  @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  order      Int
+  lat        Float
+  lng        Float
+  label      String?
+  reachedAt  DateTime?
+
+  @@index([shipmentId])
+  @@map("waypoints")
+}
+
+enum AlertType {
+  GEOFENCE
+  DELAY
+  MAINTENANCE
+  DOCUMENT
+  SYSTEM
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  type      AlertType
+  title     String
+  message   String
+  read      Boolean   @default(false)
+  createdAt DateTime  @default(now())
+
+  @@index([userId, read])
+  @@map("notifications")
+}
+
+// ---------------------------------------------------------------------------
+// Commerce domain (storefront + marketplace sync)
+// ---------------------------------------------------------------------------
+
+model Category {
+  id       String     @id @default(cuid())
+  name     String
+  slug     String     @unique
+  parentId String?
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children Category[] @relation("CategoryTree")
+
+  products Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id            String   @id @default(cuid())
+  sku           String   @unique
+  title         String
+  description   String
+  priceCents    Int
+  currency      String   @default("USD")
+  images        String[]
+  active        Boolean  @default(true)
+  inventoryQty  Int      @default(0)
+
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
+  companyId  String
+  company    Company  @relation(fields: [companyId], references: [id])
+
+  orderLines         OrderLine[]
+  marketplaceListing MarketplaceListing[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+  @@map("products")
+}
+
+enum OrderStatus {
+  CREATED
+  PAID
+  FULFILLED
+  SHIPPED
+  COMPLETED
+  REFUNDED
+  CANCELLED
+}
+
+model Order {
+  id          String      @id @default(cuid())
+  status      OrderStatus @default(CREATED)
+  totalCents  Int
+  currency    String      @default("USD")
+
+  companyId  String
+  company    Company   @relation(fields: [companyId], references: [id])
+  customerId String
+  customer   Customer  @relation(fields: [customerId], references: [id])
+  shipmentId String?   @unique
+  shipment   Shipment? @relation(fields: [shipmentId], references: [id])
+
+  lines OrderLine[]
+
+  createdAt DateTime @default(now())
+
+  @@index([companyId, status])
+  @@map("orders")
+}
+
+model OrderLine {
+  id             String  @id @default(cuid())
+  orderId        String
+  order          Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId      String
+  product        Product @relation(fields: [productId], references: [id])
+  quantity       Int
+  unitPriceCents Int
+
+  @@index([orderId])
+  @@map("order_lines")
+}
+
+enum MarketplaceChannel {
+  AMAZON
+  EBAY
+  SHOPIFY
+  DIRECT
+}
+
+enum ListingSyncStatus {
+  SYNCED
+  PENDING
+  ERROR
+}
+
+model MarketplaceListing {
+  id         String             @id @default(cuid())
+  productId  String
+  product    Product            @relation(fields: [productId], references: [id])
+  channel    MarketplaceChannel
+  externalId String
+  status     ListingSyncStatus  @default(PENDING)
+  syncedAt   DateTime?
+
+  @@unique([channel, externalId])
+  @@map("marketplace_listings")
+}
